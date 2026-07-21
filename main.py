@@ -25,6 +25,7 @@ app.add_middleware(
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_FALLBACK_MODEL = os.getenv("GROQ_FALLBACK_MODEL", "llama-3.1-8b-instant")
 
 
 SOMA_INFORMATION = """
@@ -337,7 +338,11 @@ async def home():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "model": GROQ_MODEL}
+    return {
+        "status": "ok",
+        "model": GROQ_MODEL,
+        "fallback_model": GROQ_FALLBACK_MODEL,
+    }
 
 
 @app.post("/api/chat", response_model=ChatResponse)
@@ -351,32 +356,45 @@ async def chat(request: ChatRequest):
     messages.append({"role": "user", "content": request.message.strip()})
 
     try:
+        models = list(dict.fromkeys([GROQ_MODEL, GROQ_FALLBACK_MODEL]))
+
         async with httpx.AsyncClient(timeout=90.0) as client:
-            response = await client.post(
-                GROQ_API_URL,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": GROQ_MODEL,
-                    "messages": messages,
-                    "temperature": 0.2,
-                    "top_p": 0.9,
-                    "max_completion_tokens": 800,
-                },
-            )
+            for model in models:
+                response = await client.post(
+                    GROQ_API_URL,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": model,
+                        "messages": messages,
+                        "temperature": 0.2,
+                        "top_p": 0.9,
+                        "max_completion_tokens": 800,
+                    },
+                )
 
-        if response.status_code != 200:
-            print("Groq error:", response.text)
-            raise HTTPException(status_code=502, detail="Soma AI could not answer right now.")
+                if response.status_code == 200:
+                    data = response.json()
+                    answer = data["choices"][0]["message"]["content"].strip()
+                    if not answer:
+                        raise ValueError("Empty model response")
+                    return ChatResponse(answer=answer)
 
-        data = response.json()
-        answer = data["choices"][0]["message"]["content"].strip()
-        if not answer:
-            raise ValueError("Empty model response")
+                print(f"Groq error for {model}:", response.text)
 
-        return ChatResponse(answer=answer)
+                # Daily and per-minute quotas return HTTP 429. Try the smaller
+                # fallback model, which has a separate model allowance.
+                if response.status_code == 429 and model != models[-1]:
+                    continue
+
+                raise HTTPException(
+                    status_code=502,
+                    detail="Soma AI could not answer right now.",
+                )
+
+        raise HTTPException(status_code=502, detail="Soma AI could not answer right now.")
 
     except httpx.TimeoutException as error:
         raise HTTPException(status_code=504, detail="Soma AI took too long to respond.") from error
