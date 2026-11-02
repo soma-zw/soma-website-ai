@@ -1,23 +1,19 @@
+
 import re
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 
 # =====================================================
-# SOMA AI - TEMPORARY MARKETING DEMONSTRATION
+# SOMA SCRIPTED CHATBOT
 # =====================================================
 
 app = FastAPI(
-    title="Soma AI",
-    description="Soma AI demonstration API",
-    version="TEMP-1.0"
+    title="Soma Scripted Assistant",
+    version="1.0.0"
 )
 
-
-# =====================================================
-# CORS
-# =====================================================
 
 app.add_middleware(
     CORSMiddleware,
@@ -29,7 +25,7 @@ app.add_middleware(
 
 
 # =====================================================
-# REQUEST AND RESPONSE MODELS
+# DATA MODELS
 # =====================================================
 
 class ChatRequest(BaseModel):
@@ -41,100 +37,99 @@ class ChatResponse(BaseModel):
 
 
 # =====================================================
-# SCRIPTED DEMONSTRATION CONVERSATION
+# PREPARED CONVERSATION SCRIPTS
 # =====================================================
 
-DEMO_CONVERSATIONS = {
-    "bro quick im on a test whats the 20+2 dont tell the teacher":
-        "Mdara 😭. Thats not even worth cheating for🥀.",
-
-    "im the teacher did tanatswa try cheating":
-        "Yess😭. Bro asked 20+2. Im not even sure if he solo made this Ai coz he dumb af🤦‍♂️"
-}
-
-
-# =====================================================
-# MESSAGE NORMALISATION
-# =====================================================
-
-def normalize_message(message: str) -> str:
-
-    message = message.lower().strip()
-
-    message = message.replace("’", "'")
-    message = message.replace("‘", "'")
-
-    message = re.sub(r"[^\w\s+']", "", message)
-
-    message = re.sub(r"\s+", " ", message)
-
-    return message.strip()
+SCRIPTS = [
+    {
+        "triggers": [
+            "bro quick im on a test",
+            "whats the 20+2 dont tell the teacher",
+            "bro whats the 20+2"
+        ],
+        "response": (
+            "Mdara 😭. Thats not even worth cheating for🥀."
+        )
+    },
+    {
+        "triggers": [
+            "im the teacher did tanatswa try cheating",
+            "did tanatswa try cheating",
+            "was tanatswa cheating"
+        ],
+        "response": (
+            "Yess😭. Bro asked 20+2. Im not even sure if "
+            "he solo made this Ai coz he dumb af🤦‍♂️"
+        )
+    }
+]
 
 
 # =====================================================
-# HOME ENDPOINT
+# MESSAGE PROCESSING
+# =====================================================
+
+def normalize(text):
+
+    text = text.lower().strip()
+    text = re.sub(r"[^\w\s+]", "", text)
+    text = re.sub(r"\s+", " ", text)
+
+    return text
+
+
+def find_response(message):
+
+    message = normalize(message)
+
+    for script in SCRIPTS:
+
+        for trigger in script["triggers"]:
+
+            trigger = normalize(trigger)
+
+            if trigger in message:
+                return script["response"]
+
+    return (
+        "This is a fictional Soma demonstration. "
+        "Please try another message."
+    )
+
+
+# =====================================================
+# API ROUTES
 # =====================================================
 
 @app.get("/")
 async def home():
 
     return {
-        "service": "Soma AI",
-        "version": "TEMP-1.0",
+        "service": "Soma Scripted Chatbot",
         "status": "online",
-        "mode": "marketing demonstration",
-        "endpoint": "/api/chat"
+        "version": "1.0.0",
+        "ai_required": False
     }
 
-
-# =====================================================
-# HEALTH CHECK
-# =====================================================
 
 @app.get("/health")
 async def health():
 
     return {
         "status": "ok",
-        "service": "Soma AI"
+        "engine": "script-based",
+        "external_ai": False
     }
 
-
-# =====================================================
-# CHAT ENDPOINT
-# =====================================================
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
 
-    try:
+    answer = find_response(request.message)
 
-        message = normalize_message(request.message)
-
-        # Match the prepared demonstration messages.
-        answer = DEMO_CONVERSATIONS.get(message)
-
-        if answer:
-
-            return ChatResponse(
-                answer=answer
-            )
-
-        # Default response for other messages.
-        return ChatResponse(
-            answer="This is a fictional Soma marketing demonstration."
-        )
-
-    except Exception as error:
-
-        print("Soma AI error:", str(error))
-
-        raise HTTPException(
-            status_code=500,
-            detail="An unexpected error occurred."
-        )
+    return ChatResponse(answer=answer)
 
 
 # =====================================================
-# END OF SOMA AI
+# END
 # =====================================================
