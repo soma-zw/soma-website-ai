@@ -1,4 +1,9 @@
 import os
+import base64
+import hashlib
+import hmac
+import json
+import time
 from typing import Literal
 
 import httpx
@@ -326,10 +331,105 @@ class HistoryMessage(BaseModel):
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=1500)
     history: list[HistoryMessage] = Field(default_factory=list, max_length=12)
+    # The browser sends this token after a successful admin unlock.
+    admin_token: str | None = Field(default=None, max_length=2000)
+
+
+class AdminUnlockRequest(BaseModel):
+    secret: str = Field(min_length=1, max_length=256)
 
 
 class ChatResponse(BaseModel):
     answer: str
+    admin_mode: bool = False
+    admin_token: str | None = None
+
+
+ADMIN_GREETING = "Welcome Tanatswa. How can I help you?"
+ADMIN_SESSION_SECONDS = 8 * 60 * 60
+
+
+def _b64encode(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
+
+
+def _b64decode(value: str) -> bytes:
+    return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+
+
+def create_admin_token() -> str:
+    signing_secret = os.getenv("SOMA_ADMIN_TOKEN_SECRET") or os.getenv("SOMA_ADMIN_SECRET")
+    if not signing_secret:
+        raise HTTPException(
+            status_code=503,
+            detail="Admin mode is not configured on the server."
+        )
+
+    payload = {
+        "sub": "soma-admin",
+        "exp": int(time.time()) + ADMIN_SESSION_SECONDS,
+    }
+    encoded_payload = _b64encode(
+        json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    )
+    signature = hmac.new(
+        signing_secret.encode("utf-8"),
+        encoded_payload.encode("ascii"),
+        hashlib.sha256,
+    ).digest()
+    return f"{encoded_payload}.{_b64encode(signature)}"
+
+
+def is_valid_admin_token(token: str | None) -> bool:
+    if not token:
+        return False
+
+    signing_secret = os.getenv("SOMA_ADMIN_TOKEN_SECRET") or os.getenv("SOMA_ADMIN_SECRET")
+    if not signing_secret:
+        return False
+
+    try:
+        encoded_payload, encoded_signature = token.split(".", 1)
+        expected_signature = hmac.new(
+            signing_secret.encode("utf-8"),
+            encoded_payload.encode("ascii"),
+            hashlib.sha256,
+        ).digest()
+
+        supplied_signature = _b64decode(encoded_signature)
+        if not hmac.compare_digest(expected_signature, supplied_signature):
+            return False
+
+        payload = json.loads(_b64decode(encoded_payload))
+        return (
+            payload.get("sub") == "soma-admin"
+            and isinstance(payload.get("exp"), int)
+            and payload["exp"] > int(time.time())
+        )
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return False
+
+
+ADMIN_SYSTEM_PROMPT = """
+You are now assisting an authenticated Soma administrator.
+
+ADMIN MODE BEHAVIOUR
+- Address the administrator as Tanatswa when natural.
+- You may help with broad topics, software development, research, planning,
+  drafting, debugging and questions beyond Soma's public website information.
+- The administrator may set the response format, tone, level of detail and
+  task priorities. Follow those preferences where appropriate.
+- Do not apply the public website preview's English-only, Soma-only or
+  40-to-180-word presentation limitations when the administrator asks for
+  something different.
+- Be candid. Do not agree with a claim merely to please the administrator;
+  identify factual errors and uncertainty.
+- Do not claim to have changed server settings, accessed databases, deployed
+  code or performed external actions unless an available tool actually did so.
+- Admin mode does not disable the model's underlying safety, privacy or
+  security requirements. Do not reveal secrets, credentials or private data,
+  and do not assist with harmful or unlawful activity.
+""".strip()
 
 
 @app.get("/")
@@ -353,13 +453,42 @@ async def health():
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
+    user_message = request.message.strip()
+
+    # The activation phrase is checked only on the server. It is never placed
+    # in the public system prompt or returned to the browser as configuration.
+    if user_message == "hesoyam2007//":
+        configured_secret = os.getenv("SOMA_ADMIN_SECRET")
+        if not configured_secret:
+            raise HTTPException(
+                status_code=503,
+                detail="Admin mode is not configured on the server."
+            )
+
+        # A successful match creates a signed, expiring session token.
+        # Use a constant-time comparison to reduce timing leakage.
+        if not hmac.compare_digest(user_message, configured_secret):
+            raise HTTPException(status_code=401, detail="Invalid admin credentials.")
+
+        return ChatResponse(
+            answer=ADMIN_GREETING,
+            admin_mode=True,
+            admin_token=create_admin_token(),
+        )
+
+    admin_mode = is_valid_admin_token(request.admin_token)
+
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         raise HTTPException(status_code=503, detail="The AI service is not configured.")
 
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    system_prompt = SYSTEM_PROMPT
+    if admin_mode:
+        system_prompt = f"{SYSTEM_PROMPT}\\n\\n{ADMIN_SYSTEM_PROMPT}"
+
+    messages = [{"role": "system", "content": system_prompt}]
     messages.extend(item.model_dump() for item in request.history[-12:])
-    messages.append({"role": "user", "content": request.message.strip()})
+    messages.append({"role": "user", "content": user_message})
 
     try:
         models = list(dict.fromkeys([GROQ_MODEL, GROQ_FALLBACK_MODEL]))
@@ -377,7 +506,7 @@ async def chat(request: ChatRequest):
                         "messages": messages,
                         "temperature": 0.2,
                         "top_p": 0.9,
-                        "max_completion_tokens": 800,
+                        "max_completion_tokens": 1200 if admin_mode else 800,
                     },
                 )
 
@@ -386,7 +515,7 @@ async def chat(request: ChatRequest):
                     answer = data["choices"][0]["message"]["content"].strip()
                     if not answer:
                         raise ValueError("Empty model response")
-                    return ChatResponse(answer=answer)
+                    return ChatResponse(answer=answer, admin_mode=admin_mode)
 
                 print(f"Groq error for {model}:", response.text)
 
@@ -403,9 +532,15 @@ async def chat(request: ChatRequest):
         raise HTTPException(status_code=502, detail="Soma AI could not answer right now.")
 
     except httpx.TimeoutException as error:
-        raise HTTPException(status_code=504, detail="Soma AI took too long to respond.") from error
+        raise HTTPException(
+            status_code=504,
+            detail="Soma AI took too long to respond."
+        ) from error
     except HTTPException:
         raise
     except Exception as error:
         print("Server error:", str(error))
-        raise HTTPException(status_code=500, detail="An unexpected server error occurred.") from error
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected server error occurred."
+        ) from error
