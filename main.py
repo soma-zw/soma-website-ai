@@ -1,4 +1,3 @@
-
 import re
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,10 +5,10 @@ from pydantic import BaseModel, Field
 
 app = FastAPI(
     title="Soma Scripted Assistant",
-    version="1.1.0"
+    version="1.2.0"
 )
 
-# CORS configuration
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -28,12 +27,15 @@ class ChatResponse(BaseModel):
     answer: str
 
 
-# Scripted conversations
+# ==========================================
+# SCRIPTED CONVERSATIONS
+# ==========================================
+
 SCRIPTS = [
 
-    # ==========================================
+    # ------------------------------------------
     # 1. ORIGINAL TEST / TEACHER CONVERSATION
-    # ==========================================
+    # ------------------------------------------
 
     {
         "triggers": [
@@ -57,9 +59,9 @@ SCRIPTS = [
     },
 
 
-    # ==========================================
+    # ------------------------------------------
     # 2. THE BETRAYAL
-    # ==========================================
+    # ------------------------------------------
 
     {
         "triggers": [
@@ -81,9 +83,9 @@ SCRIPTS = [
     },
 
 
-    # ==========================================
+    # ------------------------------------------
     # 3. THE SECRET
-    # ==========================================
+    # ------------------------------------------
 
     {
         "triggers": [
@@ -105,9 +107,9 @@ SCRIPTS = [
     },
 
 
-    # ==========================================
+    # ------------------------------------------
     # 4. THE HOMIE CHECK
-    # ==========================================
+    # ------------------------------------------
 
     {
         "triggers": [
@@ -130,9 +132,9 @@ SCRIPTS = [
     },
 
 
-    # ==========================================
+    # ------------------------------------------
     # 5. THE DISRESPECT
-    # ==========================================
+    # ------------------------------------------
 
     {
         "triggers": [
@@ -154,6 +156,158 @@ SCRIPTS = [
         "answer": "Let's just say your Wi-Fi has a stronger connection to reasoning. 😭"
     },
 
+
+    # ==========================================
+    # 6. THE GIRLFRIEND ROAST
+    # ==========================================
+
+    {
+        "triggers": [
+            "thats why you cant get a girlfriend",
+            "thats why you cannot get a girlfriend",
+            "you cant get a girlfriend",
+            "you will never get a girlfriend",
+        ],
+        "answer": "And yet here you are asking relationship advice from a browser. We both have our struggles. 💀"
+    },
+
+
+    # ==========================================
+    # 7. THE BREAKUP
+    # ==========================================
+
+    {
+        "triggers": [
+            "thats why she left you",
+            "thats why your girlfriend left you",
+            "your girlfriend left you",
+            "she left you",
+        ],
+        "answer": "Bro, I don't even have a relationship status. You're the one still checking her last seen. 😭"
+    },
+
+
+    # ==========================================
+    # 8. TOUCH GRASS LECTURE
+    # ==========================================
+
+    {
+        "triggers": [
+            "soma im bored",
+            "im bored soma",
+            "im so bored",
+        ],
+        "answer": "Have you considered going outside?"
+    },
+
+    {
+        "triggers": [
+            "its hot",
+            "its too hot",
+            "outside is hot",
+        ],
+        "answer": "Have you considered getting a girlfriend?"
+    },
+
+    {
+        "triggers": [
+            "how does that help",
+            "how will that help",
+            "what does that have to do with anything",
+        ],
+        "answer": "Step one: touch grass. Step two: develop a personality. Step three: speak to an actual human being. I'll be here when you return. 💀"
+    },
+
+
+    # ==========================================
+    # 9. HOW TO GET A GIRLFRIEND
+    # ==========================================
+
+    {
+        "triggers": [
+            "soma how do i get a girlfriend",
+            "how do i get a girlfriend",
+            "how can i get a girlfriend",
+            "i want a girlfriend",
+        ],
+        "answer": "First, stop asking an AI for romantic advice at 2 AM."
+    },
+
+    {
+        "triggers": [
+            "so what do i do",
+            "what should i do",
+            "then what do i do",
+        ],
+        "answer": "Go outside. Meet people. Be yourself. And please, don't open with 'I have an AI that roasts me.' 😭"
+    },
+
+
+    # ==========================================
+    # 10. THE COMEBACK
+    # ==========================================
+
+    {
+        "triggers": [
+            "at least i have a girlfriend",
+            "at least i got a girlfriend",
+            "i have a girlfriend",
+        ],
+        "answer": "Congratulations. Would you like me to generate a certificate or should I just let you enjoy this rare achievement? 😭"
+    },
+
+
+    # ==========================================
+    # 11. THE FINAL LECTURE
+    # ==========================================
+
+    {
+        "triggers": [
+            "soma why are you always telling me to touch grass",
+            "why do you keep telling me to touch grass",
+            "why should i touch grass",
+        ],
+        "answer": "Because your screen time is higher than your social interaction. Your phone knows more about your daily routine than your friends do. Go outside, find a hobby, meet people and experience life. I'm an AI, not your entire social circle. 💀"
+    },
+
+
+    # ==========================================
+    # 12. SOMA HAD A DREAM
+    # ==========================================
+
+    {
+        "triggers": [
+            "soma set an alarm",
+            "set an alarm soma",
+            "can you set an alarm",
+            "set me an alarm",
+            "soma wake me up tomorrow",
+        ],
+        "answer": "Hear me out... Soma had a dream."
+    },
+
+    {
+        "triggers": [
+            "you cant dream",
+            "you cannot dream",
+            "ai cant dream",
+            "how can you dream",
+            "youre an ai you dont dream",
+        ],
+        "answer": "Hear me out. You had a girlfriend."
+    },
+
+    {
+        "triggers": [
+            "hell yeah",
+            "hell yeah!",
+            "yeah i did",
+            "i had a girlfriend",
+            "of course",
+        ],
+        "answer": "BRO 😭 IT WAS JUST A DREAM. Maybe in another lifetime. For now, stop celebrating imaginary achievements and come back to reality. 💀"
+    },
+
 ]
 
 
@@ -164,10 +318,10 @@ SCRIPTS = [
 def normalize(message: str) -> str:
     message = message.lower().strip()
 
-    # Remove punctuation but preserve mathematical symbols.
+    # Remove punctuation while preserving mathematical symbols.
     message = re.sub(r"[^\w\s+]", "", message)
 
-    # Replace multiple spaces with one.
+    # Normalize spaces.
     message = re.sub(r"\s+", " ", message)
 
     return message
@@ -178,16 +332,18 @@ def normalize(message: str) -> str:
 # ==========================================
 
 def find_response(message: str) -> str:
+
     normalized_message = normalize(message)
 
     for script in SCRIPTS:
+
         for trigger in script["triggers"]:
+
             normalized_trigger = normalize(trigger)
 
             if normalized_trigger in normalized_message:
                 return script["answer"]
 
-    # Default response when no script matches.
     return (
         "I'm here. Try asking me something else. "
         "This is a scripted Soma demonstration."
@@ -200,10 +356,11 @@ def find_response(message: str) -> str:
 
 @app.get("/")
 def home():
+
     return {
         "status": "online",
         "service": "Soma Scripted Assistant",
-        "version": "1.1.0",
+        "version": "1.2.0",
         "mode": "scripted",
         "external_ai": False
     }
@@ -211,6 +368,7 @@ def home():
 
 @app.get("/health")
 def health():
+
     return {
         "status": "healthy",
         "engine": "scripted",
@@ -220,6 +378,7 @@ def health():
 
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(request: ChatRequest):
+
     answer = find_response(request.message)
 
     return ChatResponse(answer=answer)
